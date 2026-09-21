@@ -313,5 +313,36 @@ class SQLiteDatabase:
             conn.commit()
             return cursor.rowcount > 0
 
+    def update_hemocentro(self, hemocentro_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        fields = []
+        params = []
+        for key in ["nome", "tipo", "cidade", "estado", "endereco", "telefone", "horario"]:
+            if key in data and data[key] is not None:
+                fields.append(f"{key} = ?")
+                params.append(data[key].upper() if key == "estado" else data[key])
+
+        if not fields:
+            return None
+
+        params.append(hemocentro_id)
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE hemocentros SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+            if cursor.rowcount == 0:
+                return None
+            cursor.execute("SELECT * FROM hemocentros WHERE id = ?", (hemocentro_id,))
+            r = cursor.fetchone()
+            return {
+                "id": r["id"],
+                "nome": r["nome"],
+                "tipo": r["tipo"],
+                "cidade": r["cidade"],
+                "estado": r["estado"],
+                "endereco": r["endereco"],
+                "telefone": r["telefone"],
+                "horario": r["horario"]
+            }
+
 db = SQLiteDatabase()
 

@@ -49,6 +49,31 @@ def create_hemocentro(payload: HemocentroCreateDTO):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class HemocentroUpdateDTO(BaseModel):
+    nome: Optional[str] = None
+    tipo: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    endereco: Optional[str] = None
+    telefone: Optional[str] = None
+    horario: Optional[str] = None
+
+@router.put("/{hemocentro_id}")
+def update_hemocentro(hemocentro_id: str, payload: HemocentroUpdateDTO):
+    """Atualiza os dados cadastrais de um hemocentro"""
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="Nenhum dado informado para atualização.")
+
+    updated = db.update_hemocentro(hemocentro_id, data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Hemocentro não encontrado.")
+    return {
+        "sucesso": True,
+        "mensagem": "Hemocentro atualizado com sucesso!",
+        "hemocentro": updated
+    }
+
 @router.delete("/{hemocentro_id}")
 def delete_hemocentro(hemocentro_id: str):
     """Remove um hemocentro pelo ID"""
