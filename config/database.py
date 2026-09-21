@@ -78,42 +78,8 @@ class SQLiteDatabase:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Se a tabela de doadores estiver vazia, popula a partir do doadores.json
-            cursor.execute("SELECT COUNT(*) FROM doadores")
-            count = cursor.fetchone()[0]
-            if count == 0 and SEED_FILE.exists():
-                try:
-                    with open(SEED_FILE, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        seed_donors = data.get("doadores", []) if isinstance(data, dict) else data
-                        for d in seed_donors:
-                            cursor.execute("""
-                                INSERT OR IGNORE INTO doadores (
-                                    id, nome_completo, tipo_sanguineo, data_nascimento, cidade, estado,
-                                    whatsapp, whatsapp_e164, email, ultima_doacao, opt_in_alertas,
-                                    consentimento_lgpd, data_consentimento_lgpd, status, data_cadastro
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (
-                                d.get("id"),
-                                d.get("nomeCompleto"),
-                                d.get("tipoSanguineo"),
-                                d.get("dataNascimento"),
-                                d.get("cidade"),
-                                d.get("estado"),
-                                d.get("whatsapp"),
-                                d.get("whatsappE164"),
-                                d.get("email"),
-                                d.get("ultimaDoacao"),
-                                1 if d.get("optInAlertas", True) else 0,
-                                1 if d.get("consentimentoLGPD", True) else 0,
-                                d.get("dataConsentimentoLGPD"),
-                                d.get("status", "ativo"),
-                                d.get("dataCadastro")
-                            ))
-                    conn.commit()
-                    print(f"[SQLite] Base inicial de doadores carregada com sucesso em {DB_PATH.name}!")
-                except Exception as e:
-                    print(f"[SQLite] Erro ao carregar semente de doadores: {e}")
+            # Tabela de doadores agora opera exclusivamente com cadastros reais
+            # (Sem dados mockados pré-carregados)
 
             # Popula hemocentros se vazia
             cursor.execute("SELECT COUNT(*) FROM hemocentros")
