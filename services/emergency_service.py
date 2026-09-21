@@ -41,28 +41,31 @@ class EmergencyService:
         emoji = cls.EMOJI_URGENCIA.get(urgencia, "🔴")
         qtd = str(data.get("quantidade", 1))
         paciente = data.get("paciente", "Paciente em atendimento emergencial")
+        hospital = data.get("hospital", "Hemocentro / Hospital de Referência")
         contato = data.get("contato", "")
         detalhes = data.get("mensagem", "")
 
         # Filtra doadores compatíveis
         matching_info = cls.calculate_compatibility(blood_type, estado, cidade)
         
-        # Gera texto formatado para WhatsApp
+        # Gera texto formatado para WhatsApp oficial
         message_lines = [
             f"{emoji} *ALERTA DE EMERGÊNCIA — HEMOALERTA*",
-            f"Tipo sanguíneo necessário: *{blood_type}*",
+            f"Tipo sanguíneo urgente: *{blood_type}*",
             f"Quantidade: *{qtd} bolsa(s)*",
-            f"Instituição/Paciente: *{paciente}*",
+            f"Paciente/Instituição: *{paciente}*",
+            f"🏥 Hospital/Hemocentro: *{hospital}*",
             f"Local: *{cidade} - {estado}*",
-            f"Contato de Emergência: *{contato}*",
+            f"Contato para Dúvidas: *{contato}*",
         ]
         if detalhes:
-            message_lines.append(f"Detalhes: _{detalhes}_")
+            message_lines.append(f"Observações: _{detalhes}_")
         
         message_lines.extend([
             "",
             "🩸 *Você é um doador compatível cadastrado!*",
-            "Sua doação faz a diferença agora. Por favor, compareça ao hemocentro mais próximo ou responda esta mensagem."
+            f"Por favor, dirija-se ao *{hospital}* para realizar a sua doação de sangue.",
+            "Cada doação salva até 4 vidas. Contamos com você! 🙏"
         ])
 
         full_message = "\n".join(message_lines)
@@ -74,11 +77,13 @@ class EmergencyService:
             "tipo": blood_type,
             "quantidade": qtd,
             "paciente": paciente,
+            "hospital": hospital,
             "cidade": cidade,
             "estado": estado,
             "urgencia": urgencia,
             "contato": contato,
             "detalhes": detalhes,
+            "status": "PENDENTE",
             "doadoresAptosNotificados": matching_info["totalAptos"],
             "tiposCompativeis": matching_info["tiposCompativeis"],
             "mensagemTexto": full_message,
@@ -88,3 +93,71 @@ class EmergencyService:
 
         db.add_emergency(emergency_record)
         return emergency_record
+
+    @classmethod
+    def get_regional_availability(cls, estado: str, cidade: str = None) -> Dict[str, Any]:
+        """Consulta os tipos sanguíneos com doadores reais cadastrados na UF e Cidade"""
+        return db.get_doadores_summary_by_region(estado=estado, cidade=cidade)
+
+    @classmethod
+    def approve_and_broadcast_emergency(cls, emergency_id: str, admin_user: str = "admin") -> Dict[str, Any]:
+        """Aprova um chamado e dispara mensagens 1 por 1 aos doadores compatíveis com arte anexada"""
+        from services.whatsapp_service import WhatsAppService
+
+        em = db.get_emergency_by_id(emergency_id)
+        if not em:
+            raise ValueError(f"Emergência {emergency_id} não encontrada.")
+
+        if em.get("status") == "DISPARADO":
+            return {
+                "sucesso": False,
+                "mensagem": f"O alerta {emergency_id} já foi disparado anteriormente.",
+                "emergencia": em
+            }
+
+        # Dispara o alerta com a arte art.jpeg anexada
+        broadcast_res = WhatsAppService.broadcast_alert_to_donors(
+            blood_type=em["tipo"],
+            estado=em["estado"],
+            cidade=em["cidade"],
+            hospital=em["hospital"],
+            urgencia=em["urgencia"],
+            custom_message=em["mensagemTexto"],
+            send_art=True
+        )
+
+        sent_count = broadcast_res.get("sentCount", 0)
+        fail_count = broadcast_res.get("failCount", 0)
+        aprovado_em = datetime.utcnow().isoformat() + "Z"
+
+        db.update_emergency_status(
+            em_id=emergency_id,
+            status="DISPARADO",
+            aprovado_por=admin_user,
+            aprovado_em=aprovado_em,
+            sucessos=sent_count,
+            falhas=fail_count
+        )
+
+        updated_em = db.get_emergency_by_id(emergency_id)
+        return {
+            "sucesso": True,
+            "mensagem": f"Alerta {emergency_id} aprovado e disparado com sucesso!",
+            "disparo": broadcast_res,
+            "emergencia": updated_em
+        }
+
+    @classmethod
+    def cancel_emergency(cls, emergency_id: str, admin_user: str = "admin") -> Dict[str, Any]:
+        """Cancela uma solicitação de emergência"""
+        em = db.get_emergency_by_id(emergency_id)
+        if not em:
+            raise ValueError(f"Emergência {emergency_id} não encontrada.")
+
+        db.update_emergency_status(
+            em_id=emergency_id,
+            status="CANCELADO",
+            aprovado_por=admin_user,
+            aprovado_em=datetime.utcnow().isoformat() + "Z"
+        )
+        return {"sucesso": True, "mensagem": f"Emergência {emergency_id} cancelada com sucesso."}

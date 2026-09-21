@@ -14,11 +14,17 @@ class EmergencyCreateDTO(BaseModel):
     tipo: str = Field(..., description="Tipo sanguíneo necessário")
     quantidade: int = Field(1, ge=1, description="Quantidade de bolsas solicitadas")
     paciente: str = Field(..., description="Nome do paciente ou instituição")
+    hospital: Optional[str] = Field("Hemocentro Regional", description="Hospital ou Hemocentro onde deve ser realizada a doação")
     cidade: str = Field(..., description="Cidade da emergência")
     estado: str = Field(..., min_length=2, max_length=2, description="UF do estado")
     urgencia: str = Field("ALTA", description="Nível de urgência: MÉDIA, ALTA, CRÍTICA")
     contato: str = Field(..., description="Telefone de contato do hemocentro/hospital")
     mensagem: Optional[str] = Field(None, description="Informações adicionais para o doador")
+
+@router.get("/disponibilidade-regiao")
+def get_regional_availability(estado: str, cidade: Optional[str] = None):
+    """Retorna os tipos sanguíneos que possuem doadores reais cadastrados naquela região"""
+    return EmergencyService.get_regional_availability(estado=estado, cidade=cidade)
 
 @router.post("/calcular-compatibilidade")
 def calculate_compatibility(payload: CompatibilityCheckDTO):
@@ -31,12 +37,12 @@ def calculate_compatibility(payload: CompatibilityCheckDTO):
 
 @router.post("/solicitar", status_code=status.HTTP_201_CREATED)
 def create_emergency(payload: EmergencyCreateDTO):
-    """Cria uma solicitação de emergência e gera a mensagem e link para WhatsApp"""
+    """Cria uma solicitação de emergência como PENDENTE de aprovação pelo Admin/Hemocentro"""
     try:
         emergency = EmergencyService.create_emergency(payload.model_dump())
         return {
             "sucesso": True,
-            "mensagem": f"Alerta registrado! {emergency['doadoresAptosNotificados']} doadores compatíveis identificados.",
+            "mensagem": f"Solicitação SOS #{emergency['id']} registrada com sucesso! Encaminhada para a moderação e validação da equipe do Hemocentro.",
             "emergencia": emergency
         }
     except Exception as e:

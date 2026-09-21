@@ -1,10 +1,15 @@
 import json
 import urllib.request
 import urllib.error
+import os
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from config.database import db
 from services.matching_service import MatchingService
 
+# Caminho da arte oficial em frontend_hemo/public/art.jpeg
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+ART_IMAGE_PATH = str(BASE_DIR / "frontend_hemo" / "public" / "art.jpeg")
 VENOM_SERVICE_URL = "http://127.0.0.1:8001"
 
 class WhatsAppService:
@@ -60,11 +65,20 @@ class WhatsAppService:
     def disconnect(cls) -> Dict[str, Any]:
         """Encerra a sessão atual do WhatsApp"""
         return cls._make_request("/disconnect", method="POST")
+    @classmethod
+    def get_art_image_path(cls) -> Optional[str]:
+        if os.path.exists(ART_IMAGE_PATH):
+            return ART_IMAGE_PATH
+        return None
 
     @classmethod
-    def send_message(cls, to: str, message: str) -> Dict[str, Any]:
-        """Envia uma mensagem de texto direta para um número de WhatsApp"""
-        return cls._make_request("/send", method="POST", data={"to": to, "message": message})
+    def send_message(cls, to: str, message: str, send_art: bool = True) -> Dict[str, Any]:
+        """Envia uma mensagem de texto (e opcionalmente arte) para um número de WhatsApp"""
+        data = {"to": to, "message": message}
+        art = cls.get_art_image_path()
+        if send_art and art:
+            data["imagePath"] = art
+        return cls._make_request("/send", method="POST", data=data)
 
     @classmethod
     def broadcast_alert_to_donors(
@@ -73,11 +87,13 @@ class WhatsAppService:
         estado: str,
         cidade: Optional[str] = None,
         hospital: Optional[str] = None,
-        urgencia: str = "ALTA"
+        urgencia: str = "ALTA",
+        custom_message: Optional[str] = None,
+        send_art: bool = True
     ) -> Dict[str, Any]:
         """
         Localiza doadores compatíveis no SQLite (hemoalerta.db)
-        e dispara mensagens de emergência via Venom WhatsApp
+        e dispara mensagens de emergência com arte via WhatsApp 1 por 1
         """
         # Tipos sanguíneos compatíveis que podem doar para este receptor
         compat_types = MatchingService.get_compatible_donors(blood_type)
@@ -95,12 +111,12 @@ class WhatsAppService:
             WHERE tipo_sanguineo IN ({placeholders})
               AND UPPER(estado) = ?
               AND opt_in_alertas = 1
-              AND status = 'ATIVO'
+              AND LOWER(status) = 'ativo'
         """
 
-        if cidade:
+        if cidade and cidade.strip():
             query += " AND LOWER(cidade) = ?"
-            params.append(cidade.lower())
+            params.append(cidade.strip().lower())
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -125,21 +141,26 @@ class WhatsAppService:
                 "mensagem": "Nenhum doador compatível com alertas ativos encontrado para esta localidade."
             }
 
-        base_msg = (
-            f"🚨 *ALERTA DE EMERGÊNCIA - HEMOALERTA* 🚨\n\n"
-            f"Olá {{nome}},\n"
-            f"Precisamos com *URGÊNCIA MÁXIMA ({urgencia})* de doação de sangue tipo *{blood_type}* "
-            f"em {cidade or 'sua região'} / {estado.upper()}.\n\n"
-            f"🏥 Local/Hospital: {hospital or 'Hemocentro Regional'}\n"
-            f"❤️ Você está cadastrado no HemoAlerta como compatível.\n\n"
-            f"Se você puder doar hoje ou nos próximos dias, por favor responda esta mensagem ou dirija-se ao hemocentro.\n"
-            f"Cada bolsa salva até 4 vidas! 🙏"
-        )
+        if custom_message:
+            base_msg = custom_message
+        else:
+            base_msg = (
+                f"🚨 *CONVOCAÇÃO DE EMERGÊNCIA - HEMOALERTA* 🚨\n\n"
+                f"Olá {{nome}},\n"
+                f"Precisamos com urgência ({urgencia}) de sangue tipo *{blood_type}* na região de {cidade or 'sua localidade'} - {estado.upper()}.\n\n"
+                f"🏥 *Local da Doação:* {hospital or 'Hemocentro Regional'}\n"
+                f"🩸 *Compatibilidade:* Você é um doador compatível cadastrado no HemoAlerta.\n\n"
+                f"Por favor, compareça ao hemocentro para doar e ajude a salvar vidas hoje. Sua ajuda é fundamental! 🙏"
+            )
 
-        result = cls._make_request("/broadcast", method="POST", data={
+        payload_data = {
             "recipients": recipients,
             "message": base_msg
-        })
+        }
+        art = cls.get_art_image_path()
+        if send_art and art:
+            payload_data["imagePath"] = art
 
+        result = cls._make_request("/broadcast", method="POST", data=payload_data)
         result["totalEncontrados"] = len(recipients)
         return result

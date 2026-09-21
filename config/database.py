@@ -49,6 +49,12 @@ class SQLiteDatabase:
                     urgencia TEXT NOT NULL,
                     contato TEXT NOT NULL,
                     detalhes TEXT,
+                    hospital TEXT,
+                    status TEXT NOT NULL DEFAULT 'PENDENTE',
+                    aprovado_em TEXT,
+                    aprovado_por TEXT,
+                    disparos_sucesso INTEGER DEFAULT 0,
+                    disparos_falha INTEGER DEFAULT 0,
                     doadores_notificados INTEGER DEFAULT 0,
                     tipos_compativeis TEXT,
                     mensagem_texto TEXT,
@@ -56,6 +62,20 @@ class SQLiteDatabase:
                     criado_em TEXT NOT NULL
                 )
             """)
+
+            # Migrações seguras de colunas em emergencias caso a tabela já existisse
+            for col, col_type in [
+                ("status", "TEXT NOT NULL DEFAULT 'PENDENTE'"),
+                ("hospital", "TEXT"),
+                ("aprovado_em", "TEXT"),
+                ("aprovado_por", "TEXT"),
+                ("disparos_sucesso", "INTEGER DEFAULT 0"),
+                ("disparos_falha", "INTEGER DEFAULT 0")
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE emergencias ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
 
             # Tabela de Hemocentros
             cursor.execute("""
@@ -220,19 +240,26 @@ class SQLiteDatabase:
             cursor.execute("""
                 INSERT INTO emergencias (
                     id, tipo, quantidade, paciente, cidade, estado, urgencia, contato,
-                    detalhes, doadores_notificados, tipos_compativeis, mensagem_texto,
-                    whatsapp_share_link, criado_em
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    detalhes, hospital, status, aprovado_em, aprovado_por,
+                    disparos_sucesso, disparos_falha, doadores_notificados,
+                    tipos_compativeis, mensagem_texto, whatsapp_share_link, criado_em
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 em["id"],
                 em["tipo"],
                 str(em["quantidade"]),
                 em["paciente"],
                 em["cidade"],
-                em["estado"],
+                em["estado"].upper(),
                 em["urgencia"],
                 em["contato"],
                 em.get("detalhes", ""),
+                em.get("hospital", "Hemocentro / Hospital"),
+                em.get("status", "PENDENTE"),
+                em.get("aprovadoEm"),
+                em.get("aprovadoPor"),
+                em.get("disparosSucesso", 0),
+                em.get("disparosFalha", 0),
                 em.get("doadoresAptosNotificados", 0),
                 json.dumps(em.get("tiposCompativeis", [])),
                 em.get("mensagemTexto", ""),
@@ -242,10 +269,13 @@ class SQLiteDatabase:
             conn.commit()
             return em
 
-    def get_emergencies(self) -> List[Dict[str, Any]]:
+    def get_emergencies(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM emergencias ORDER BY criado_em DESC")
+            if status:
+                cursor.execute("SELECT * FROM emergencias WHERE status = ? ORDER BY criado_em DESC", (status.upper(),))
+            else:
+                cursor.execute("SELECT * FROM emergencias ORDER BY criado_em DESC")
             items = []
             for r in cursor.fetchall():
                 items.append({
@@ -258,13 +288,111 @@ class SQLiteDatabase:
                     "urgencia": r["urgencia"],
                     "contato": r["contato"],
                     "detalhes": r["detalhes"],
-                    "doadoresAptosNotificados": r["doadores_notificados"],
+                    "hospital": r["hospital"] or "Hemocentro Regional",
+                    "status": r["status"] or "PENDENTE",
+                    "aprovadoEm": r["aprovado_em"],
+                    "aprovadoPor": r["aprovado_por"],
+                    "disparosSucesso": r["disparos_sucesso"] or 0,
+                    "disparosFalha": r["disparos_falha"] or 0,
+                    "doadoresAptosNotificados": r["doadores_notificados"] or 0,
                     "tiposCompativeis": json.loads(r["tipos_compativeis"] or "[]"),
                     "mensagemTexto": r["mensagem_texto"],
                     "whatsappShareLink": r["whatsapp_share_link"],
                     "criadoEm": r["criado_em"]
                 })
             return items
+
+    def get_emergency_by_id(self, em_id: str) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM emergencias WHERE id = ?", (em_id,))
+            r = cursor.fetchone()
+            if not r:
+                return None
+            return {
+                "id": r["id"],
+                "tipo": r["tipo"],
+                "quantidade": r["quantidade"],
+                "paciente": r["paciente"],
+                "cidade": r["cidade"],
+                "estado": r["estado"],
+                "urgencia": r["urgencia"],
+                "contato": r["contato"],
+                "detalhes": r["detalhes"],
+                "hospital": r["hospital"] or "Hemocentro Regional",
+                "status": r["status"] or "PENDENTE",
+                "aprovadoEm": r["aprovado_em"],
+                "aprovadoPor": r["aprovado_por"],
+                "disparosSucesso": r["disparos_sucesso"] or 0,
+                "disparosFalha": r["disparos_falha"] or 0,
+                "doadoresAptosNotificados": r["doadores_notificados"] or 0,
+                "tiposCompativeis": json.loads(r["tipos_compativeis"] or "[]"),
+                "mensagemTexto": r["mensagem_texto"],
+                "whatsappShareLink": r["whatsapp_share_link"],
+                "criadoEm": r["criado_em"]
+            }
+
+    def update_emergency_status(
+        self,
+        em_id: str,
+        status: str,
+        aprovado_por: Optional[str] = None,
+        aprovado_em: Optional[str] = None,
+        sucessos: int = 0,
+        falhas: int = 0
+    ) -> bool:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE emergencias
+                SET status = ?, aprovado_por = COALESCE(?, aprovado_por),
+                    aprovado_em = COALESCE(?, aprovado_em),
+                    disparos_sucesso = ?, disparos_falha = ?
+                WHERE id = ?
+            """, (status.upper(), aprovado_por, aprovado_em, sucessos, falhas, em_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_doadores_summary_by_region(self, estado: str, cidade: Optional[str] = None) -> Dict[str, Any]:
+        """Agrupa os doadores cadastrados e ativos daquela região para guiar a seleção de tipos em /emergencia"""
+        import unicodedata
+
+        def _normalize(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('ASCII').strip().lower()
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT tipo_sanguineo, cidade
+                FROM doadores
+                WHERE UPPER(estado) = ?
+                  AND LOWER(status) = 'ativo'
+                  AND opt_in_alertas = 1
+            """, (estado.upper(),))
+            rows = cursor.fetchall()
+
+            norm_cidade = _normalize(cidade) if cidade else None
+
+            por_tipo = {}
+            city_rows = [r for r in rows if _normalize(r["cidade"]) == norm_cidade] if norm_cidade else []
+            # Se encontrou doadores na cidade específica, usa-os; caso contrário, estende para o estado todo
+            target_rows = city_rows if city_rows else rows
+
+            for r in target_rows:
+                t = r["tipo_sanguineo"]
+                por_tipo[t] = por_tipo.get(t, 0) + 1
+
+            total_doadores = sum(por_tipo.values())
+            return {
+                "estado": estado.upper(),
+                "cidade": cidade,
+                "totalDoadores": total_doadores,
+                "porTipo": por_tipo,
+                "tiposComDoadores": list(por_tipo.keys())
+            }
+
 
     # ==========================
     # MÉTODOS DE HEMOCENTROS

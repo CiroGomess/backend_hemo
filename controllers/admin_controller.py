@@ -75,15 +75,55 @@ def send_test_message(payload: SendTestDTO):
 def broadcast_alert(payload: BroadcastAlertDTO):
     """
     Busca os doadores compatíveis no SQLite (hemoalerta.db)
-    e dispara o alerta de emergência via WhatsApp
+    e dispara o alerta de emergência via WhatsApp com a arte oficial
     """
     res = WhatsAppService.broadcast_alert_to_donors(
         blood_type=payload.tipoSanguineo,
         estado=payload.estado,
         cidade=payload.cidade,
         hospital=payload.hospital,
-        urgencia=payload.urgencia
+        urgencia=payload.urgencia,
+        send_art=True
     )
     if not res.get("success", False) and "error" in res:
         raise HTTPException(status_code=400, detail=res["error"])
     return res
+
+# ==========================================
+# GESTÃO DE CHAMADOS DE EMERGÊNCIA (SOS)
+# ==========================================
+from config.database import db
+from services.emergency_service import EmergencyService
+
+@router.get("/emergencias")
+def list_emergencies(status: Optional[str] = None):
+    """Retorna os chamados de emergência (filtráveis por PENDENTE, DISPARADO, etc.)"""
+    return db.get_emergencies(status=status)
+
+@router.get("/emergencias/{emergency_id}")
+def get_emergency(emergency_id: str):
+    """Obtém detalhes de um chamado de emergência específico"""
+    em = db.get_emergency_by_id(emergency_id)
+    if not em:
+        raise HTTPException(status_code=404, detail="Emergência não encontrada.")
+    return em
+
+@router.post("/emergencias/{emergency_id}/aprovar")
+def approve_emergency(emergency_id: str):
+    """Aprova e inicia o disparo oficial de WhatsApp 1 por 1 com a arte oficial anexada"""
+    try:
+        return EmergencyService.approve_and_broadcast_emergency(emergency_id, admin_user="admin")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao processar disparo de emergência: {str(e)}")
+
+@router.post("/emergencias/{emergency_id}/cancelar")
+def cancel_emergency(emergency_id: str):
+    """Cancela um chamado de emergência sem disparar alertas"""
+    try:
+        return EmergencyService.cancel_emergency(emergency_id, admin_user="admin")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

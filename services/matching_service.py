@@ -41,10 +41,20 @@ class MatchingService:
         patient_blood_type: str,
         estado: Optional[str] = None,
         cidade: Optional[str] = None,
-        require_opt_in: bool = True
+        require_opt_in: bool = True,
+        check_interval: bool = False
     ) -> List[Dict[str, Any]]:
+        import unicodedata
+
+        def _normalize(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('ASCII').strip().lower()
+
         compatible_types = set(cls.get_compatible_donor_types(patient_blood_type))
         result = []
+
+        norm_cidade = _normalize(cidade) if cidade else None
 
         for d in donors:
             # 1. Opt-in de alertas
@@ -64,15 +74,16 @@ class MatchingService:
             if estado and d.get("estado", "").upper() != estado.upper():
                 continue
 
-            # 5. Filtro por Cidade (opcional/prioritário)
-            if cidade and d.get("cidade", "").strip().lower() != cidade.strip().lower():
-                # Nota: ainda podemos incluir da mesma UF, mas marcamos se é mesma cidade
-                pass
-
-            # 6. Intervalo biológico de doação
-            if not cls.is_donor_interval_valid(d.get("ultimaDoacao")):
+            # 5. Intervalo biológico de doação (por padrão desligado em chamados SOS para não ocultar voluntários cadastrados)
+            if check_interval and not cls.is_donor_interval_valid(d.get("ultimaDoacao")):
                 continue
 
             result.append(d)
+
+        # Se especificou cidade, prioriza compatíveis da mesma cidade; se não houver na cidade, mantém do estado
+        if norm_cidade:
+            city_matches = [d for d in result if _normalize(d.get("cidade")) == norm_cidade]
+            if city_matches:
+                return city_matches
 
         return result
