@@ -66,7 +66,10 @@ def disconnect_whatsapp():
 @router.post("/whatsapp/send-test")
 def send_test_message(payload: SendTestDTO):
     """Envia uma mensagem de teste para verificar se o Venom está apto a disparar"""
-    return WhatsAppService.send_message(payload.to, payload.message)
+    res = WhatsAppService.send_message(payload.to, payload.message)
+    if not res.get("success", False) and "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
 
 @router.post("/whatsapp/broadcast-alert")
 def broadcast_alert(payload: BroadcastAlertDTO):
@@ -74,10 +77,13 @@ def broadcast_alert(payload: BroadcastAlertDTO):
     Busca os doadores compatíveis no SQLite (hemoalerta.db)
     e dispara o alerta de emergência via WhatsApp
     """
-    return WhatsAppService.broadcast_alert_to_donors(
+    res = WhatsAppService.broadcast_alert_to_donors(
         blood_type=payload.tipoSanguineo,
         estado=payload.estado,
         cidade=payload.cidade,
         hospital=payload.hospital,
         urgencia=payload.urgencia
     )
+    if not res.get("success", False) and "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res

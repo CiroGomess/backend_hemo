@@ -20,6 +20,14 @@ class WhatsAppService:
         try:
             with urllib.request.urlopen(req, data=body, timeout=10) as response:
                 return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                return json.loads(e.read().decode("utf-8"))
+            except Exception:
+                return {
+                    "success": False,
+                    "error": f"Erro no serviço Venom (HTTP {e.code})"
+                }
         except urllib.error.URLError as e:
             return {
                 "status": "OFFLINE",
