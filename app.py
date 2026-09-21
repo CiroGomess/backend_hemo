@@ -1,9 +1,23 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config.settings import CORS_ORIGINS
+from config.settings import CORS_ORIGINS, HOST, PORT
 from routes.api import api_router
+    
+# Logger do uvicorn: aparece no console tanto em dev quanto em produção
+logger = logging.getLogger("uvicorn.error")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Executa em qualquer forma de inicialização (python app.py, uvicorn app:app, gunicorn)
+    logger.info(f"✅ HemoAlerta API v{app.version} iniciada com sucesso em {HOST}:{PORT}")
+    yield
+    logger.info("🛑 HemoAlerta API encerrada")
 
 app = FastAPI(
+    lifespan=lifespan,
     title="🩸 HemoAlerta API",
     description="API REST para gestão de doadores de sangue voluntários, compatibilidade sanguínea e alertas de emergência (LGPD compliant).",
     version="3.0.0",
@@ -38,6 +52,5 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    from config.settings import HOST, PORT
     print(f"🚀 HemoAlerta API iniciando em http://localhost:{PORT}")
     uvicorn.run("app:app", host=HOST, port=PORT, reload=True)
