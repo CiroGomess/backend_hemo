@@ -287,4 +287,31 @@ class SQLiteDatabase:
                 })
             return items
 
+    def add_hemocentro(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO hemocentros (id, nome, tipo, cidade, estado, endereco, telefone, horario)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data["id"],
+                data["nome"],
+                data.get("tipo", "hemocentro"),
+                data["cidade"],
+                data["estado"].upper(),
+                data["endereco"],
+                data["telefone"],
+                data.get("horario", "Seg-Sex: 8h-17h")
+            ))
+            conn.commit()
+            return data
+
+    def delete_hemocentro(self, hemocentro_id: str) -> bool:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM hemocentros WHERE id = ?", (hemocentro_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
 db = SQLiteDatabase()
+
