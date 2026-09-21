@@ -96,7 +96,7 @@ class WhatsAppService:
         e dispara mensagens de emergência com arte via WhatsApp 1 por 1
         """
         # Tipos sanguíneos compatíveis que podem doar para este receptor
-        compat_types = MatchingService.get_compatible_donors(blood_type)
+        compat_types = MatchingService.get_compatible_donor_types(blood_type)
 
         conn = db.get_connection()
         cursor = conn.cursor()

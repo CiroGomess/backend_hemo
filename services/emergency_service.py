@@ -123,7 +123,7 @@ class EmergencyService:
             hospital=em["hospital"],
             urgencia=em["urgencia"],
             custom_message=em["mensagemTexto"],
-            send_art=True
+            send_art=False
         )
 
         sent_count = broadcast_res.get("sentCount", 0)
