@@ -65,7 +65,7 @@ venv.bak/
 
 # SQLite databases & Local runtime logs
 *.sqlite3
-*.db
+
 *.log
 
 # Editor & IDE configs
