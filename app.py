@@ -54,5 +54,7 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"🚀 HemoAlerta API iniciando em http://localhost:{PORT}")
-    uvicorn.run("app:app", host=HOST, port=PORT, reload=True)
+    import os
+    is_prod = os.getenv("PORT") is not None or HOST != "127.0.0.1"
+    print(f"🚀 HemoAlerta API iniciando em http://{HOST}:{PORT}")
+    uvicorn.run("app:app", host=HOST, port=PORT, reload=False)
