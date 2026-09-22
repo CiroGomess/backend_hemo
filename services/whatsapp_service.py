@@ -5,12 +5,14 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from config.database import db
+from config.settings import VENOM_SERVICE_URL
 from services.matching_service import MatchingService
 
-# Caminho da arte oficial em frontend_hemo/public/art.jpeg
+# Caminhos e URLs da arte oficial
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 ART_IMAGE_PATH = str(BASE_DIR / "frontend_hemo" / "public" / "art.jpeg")
-VENOM_SERVICE_URL = "http://127.0.0.1:8001"
+BACKEND_ART_PATH = str(Path(__file__).resolve().parent.parent / "art.jpeg")
+PROD_ART_URL = "https://hemoalert.squareweb.app/art.jpeg"
 
 class WhatsAppService:
     @staticmethod
@@ -69,7 +71,9 @@ class WhatsAppService:
     def get_art_image_path(cls) -> Optional[str]:
         if os.path.exists(ART_IMAGE_PATH):
             return ART_IMAGE_PATH
-        return None
+        if os.path.exists(BACKEND_ART_PATH):
+            return BACKEND_ART_PATH
+        return PROD_ART_URL
 
     @classmethod
     def send_message(cls, to: str, message: str, send_art: bool = True) -> Dict[str, Any]:

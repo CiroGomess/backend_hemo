@@ -25,13 +25,15 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configuração de CORS para permitir acesso seguro do frontend React / Next.js
+# Configuração de CORS para permitir acesso do frontend Next.js e whats-service
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Registro do roteador central de APIs
