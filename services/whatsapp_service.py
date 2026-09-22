@@ -10,6 +10,11 @@ from services.matching_service import MatchingService
 DEFAULT_TIMEOUT = 20
 BROADCAST_TIMEOUT = 900
 
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 HemoAlertaBackend/3.0"
+)
+
 class WhatsAppService:
     @staticmethod
     def _make_request(endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None, timeout: int = DEFAULT_TIMEOUT) -> Dict[str, Any]:
@@ -17,6 +22,8 @@ class WhatsAppService:
         req = urllib.request.Request(url, method=method)
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", "application/json")
+        # Cloudflare da Square Cloud bloqueia "Python-urllib" (Error 1010): usa UA de navegador
+        req.add_header("User-Agent", USER_AGENT)
 
         body = json.dumps(data).encode("utf-8") if data else None
 
