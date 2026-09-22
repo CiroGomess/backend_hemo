@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config.settings import CORS_ORIGINS, HOST, PORT
+from config.settings import CORS_ORIGINS, CORS_ORIGIN_REGEX, HOST, PORT
 from routes.api import api_router
     
 # Logger do uvicorn: aparece no console tanto em dev quanto em produção
@@ -29,7 +29,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_origin_regex=r"^https?://.*",
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,7 +54,5 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    is_prod = os.getenv("PORT") is not None or HOST != "127.0.0.1"
     print(f"🚀 HemoAlerta API iniciando em http://{HOST}:{PORT}")
     uvicorn.run("app:app", host=HOST, port=PORT, reload=False)

@@ -1,22 +1,18 @@
 import json
 import urllib.request
 import urllib.error
-import os
-from pathlib import Path
 from typing import Dict, Any, List, Optional
 from config.database import db
-from config.settings import VENOM_SERVICE_URL
+from config.settings import VENOM_SERVICE_URL, PROD_ART_URL
 from services.matching_service import MatchingService
 
-# Caminhos e URLs da arte oficial
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-ART_IMAGE_PATH = str(BASE_DIR / "frontend_hemo" / "public" / "art.jpeg")
-BACKEND_ART_PATH = str(Path(__file__).resolve().parent.parent / "art.jpeg")
-PROD_ART_URL = "https://hemoalert.squareweb.app/art.jpeg"
+# Timeouts (segundos): chamadas rápidas x disparo em lote (1,8s por doador)
+DEFAULT_TIMEOUT = 20
+BROADCAST_TIMEOUT = 900
 
 class WhatsAppService:
     @staticmethod
-    def _make_request(endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _make_request(endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None, timeout: int = DEFAULT_TIMEOUT) -> Dict[str, Any]:
         url = f"{VENOM_SERVICE_URL}{endpoint}"
         req = urllib.request.Request(url, method=method)
         req.add_header("Content-Type", "application/json")
@@ -25,7 +21,7 @@ class WhatsAppService:
         body = json.dumps(data).encode("utf-8") if data else None
 
         try:
-            with urllib.request.urlopen(req, data=body, timeout=10) as response:
+            with urllib.request.urlopen(req, data=body, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             try:
@@ -68,20 +64,17 @@ class WhatsAppService:
         """Encerra a sessão atual do WhatsApp"""
         return cls._make_request("/disconnect", method="POST")
     @classmethod
-    def get_art_image_path(cls) -> Optional[str]:
-        if os.path.exists(ART_IMAGE_PATH):
-            return ART_IMAGE_PATH
-        if os.path.exists(BACKEND_ART_PATH):
-            return BACKEND_ART_PATH
+    def get_art_image_path(cls) -> str:
+        """URL pública da arte: backend e whats-service rodam em containers separados,
+        então caminho de arquivo local não serve — o whats-service baixa pela URL."""
         return PROD_ART_URL
 
     @classmethod
     def send_message(cls, to: str, message: str, send_art: bool = True) -> Dict[str, Any]:
         """Envia uma mensagem de texto (e opcionalmente arte) para um número de WhatsApp"""
-        data = {"to": to, "message": message}
-        art = cls.get_art_image_path()
-        if send_art and art:
-            data["imagePath"] = art
+        data = {"to": to, "message": message, "sendArt": send_art}
+        if send_art:
+            data["imagePath"] = cls.get_art_image_path()
         return cls._make_request("/send", method="POST", data=data)
 
     @classmethod
@@ -159,12 +152,12 @@ class WhatsAppService:
 
         payload_data = {
             "recipients": recipients,
-            "message": base_msg
+            "message": base_msg,
+            "sendArt": send_art
         }
-        art = cls.get_art_image_path()
-        if send_art and art:
-            payload_data["imagePath"] = art
+        if send_art:
+            payload_data["imagePath"] = cls.get_art_image_path()
 
-        result = cls._make_request("/broadcast", method="POST", data=payload_data)
+        result = cls._make_request("/broadcast", method="POST", data=payload_data, timeout=BROADCAST_TIMEOUT)
         result["totalEncontrados"] = len(recipients)
         return result
